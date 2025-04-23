@@ -1,4 +1,4 @@
-# Actor Browserbase MCP
+# 🅱️ Actor Browserbase MCP
 
 This Actor is a wrapper for the [browserbase](https://github.com/browserbase/mcp-server-browserbase) MCP server.
 
@@ -6,7 +6,7 @@ This server provides cloud browser automation capabilities using [Browserbase](h
 
 All credits to the original authors of https://github.com/browserbase/mcp-server-browserbase.
 
-## Features
+## 🚀 Features
 
 | Feature            | Description                               |
 | ------------------ | ----------------------------------------- |
@@ -17,14 +17,14 @@ All credits to the original authors of https://github.com/browserbase/mcp-server
 | JavaScript         | Execute custom JS in the browser context  |
 | Web Interaction    | Navigate, click, and fill forms with ease |
 
-## Use cases
+## 🔍 Use cases
 
 - 🌐 Web navigation and form filling
 - 📋 Structured data extraction
 - 🧪 LLM-driven automated testing
 - 🤖 Browser automation for AI agents
 
-## Tools
+## 🧰 Tools
 
 | Tool Name                 | Description                                                                 |
 | ------------------------- | --------------------------------------------------------------------------- |
@@ -35,7 +35,7 @@ All credits to the original authors of https://github.com/browserbase/mcp-server
 | browserbase_evaluate       | Execute JavaScript in the browser console                                  |
 | browserbase_get_content    | Extract all content from the current page                                  |
 
-## Pricing
+## 💸 Pricing
 
 | Event                              | Description                                                   | Price (USD) |
 | ---------------------------------- | ------------------------------------------------------------- | ----------- |
