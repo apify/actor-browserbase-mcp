@@ -1,0 +1,40 @@
+{
+  "name": "actor-browserbase-mcp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/main.js",
+  "type": "module",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "build:watch": "tsc -w",
+    "type-check": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apify/actor-browserbase-mcp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/apify/actor-browserbase-mcp/issues"
+  },
+  "homepage": "https://github.com/apify/actor-browserbase-mcp#readme",
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.5.0",
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "apify": "^3.4.0",
+    "express": "^5.1.0",
+    "puppeteer-core": "^24.7.1"
+  },
+  "devDependencies": {
+    "@apify/tsconfig": "^0.1.1",
+    "@types/express": "^5.0.1",
+    "typescript": "^5.8.3"
+  }
+}
