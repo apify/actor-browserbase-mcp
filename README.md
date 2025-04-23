@@ -34,3 +34,10 @@ All credits to the original authors of https://github.com/browserbase/mcp-server
 | browserbase_fill           | Fill out an input field                                                    |
 | browserbase_evaluate       | Execute JavaScript in the browser console                                  |
 | browserbase_get_content    | Extract all content from the current page                                  |
+
+## Pricing
+
+| Event                              | Description                                                   | Price (USD) |
+| ---------------------------------- | ------------------------------------------------------------- | ----------- |
+| Actor start per 1 GB               | Flat fee for starting an Actor run for each 1 GB of memory.   | $0.05       |
+| BrowserBase session runtime per minute | Flat fee for each started minute of BrowserBase session runtime. | $0.002      |
