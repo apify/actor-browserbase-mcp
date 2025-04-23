@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
   CallToolResult,
-  TextContent,
+  // TextContent,
   ImageContent,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -321,14 +321,19 @@ async function handleToolCall(
         return {
           content: [
             {
-              type: "text",
-              text: `Screenshot taken`,
-            } as TextContent,
-            {
-              type: "image",
-              data: screenshot,
-              mimeType: "image/png",
+            type: "image",
+            data: screenshot,
+            mimeType: "image/png",
             } as ImageContent,
+            // {
+            //   type: "text",
+            //   text: `Screenshot taken`,
+            // } as TextContent,
+            // {
+            //   type: "image",
+            //   data: screenshot,
+            //   mimeType: "image/png",
+            // } as ImageContent,
           ],
           isError: false,
         };
