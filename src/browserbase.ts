@@ -143,15 +143,18 @@ async function createNewBrowserSession(sessionId: string) {
 
 // 4. Tool Definitions
 const TOOLS: Tool[] = [
-  {
-    name: "browserbase_create_session",
-    description: "Create a new cloud browser session using Browserbase",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-  },
+    // TODO: uncomment
+    // This is commented out for the demo since the LLM called this before
+    // any browser interaction and cause maximum number of sessions reached
+  // {
+  //   name: "browserbase_create_session",
+  //   description: "Create a new cloud browser session using Browserbase",
+  //   inputSchema: {
+  //     type: "object",
+  //     properties: {},
+  //     required: [],
+  //   },
+  // },
   {
     name: "browserbase_navigate",
     description: "Navigate to a URL",
@@ -325,6 +328,7 @@ async function handleToolCall(
             data: screenshot,
             mimeType: "image/png",
             } as ImageContent,
+            // TODO: uncomment after better image handling is implemented in tester client
             // {
             //   type: "text",
             //   text: `Screenshot taken`,
