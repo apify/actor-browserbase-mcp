@@ -1,12 +1,10 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-// import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
   CallToolResult,
-  // TextContent,
   ImageContent,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -26,8 +24,8 @@ Object.entries(requiredEnvVars).forEach(([name, value]) => {
 
 // 2. Global State
 const browsers = new Map<string, { browser: Browser; page: Page }>();
+const consoleLogs: string[] = [];
 const screenshots = new Map<string, string>();
-
 // Global state variable for the default browser session
 let defaultBrowserSession: { browser: Browser; page: Page } | null = null;
 const sessionId = "default"; // Using a consistent session ID for the default session
@@ -40,6 +38,7 @@ async function ensureBrowserSession(): Promise<{
   try {
     // If no session exists, create one
     if (!defaultBrowserSession) {
+      log("Initializing new browser session...", "info");
       defaultBrowserSession = await createNewBrowserSession(sessionId);
       return defaultBrowserSession;
     }
@@ -61,6 +60,10 @@ async function ensureBrowserSession(): Promise<{
           error.message.includes("detached") ||
           error.message.includes("Attempted to use detached Frame"))
       ) {
+        log(
+          "Browser session expired or detached, attempting full reset...",
+          "info"
+        );
         // Force cleanup of all sessions
         try {
           // Try to close the session if it's still accessible
@@ -80,7 +83,13 @@ async function ensureBrowserSession(): Promise<{
             }
             browsers.delete(id);
           }
-        } catch {
+        } catch (e) {
+          log(
+            `Error during cleanup: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+            "error"
+          );
           // Continue with reset even if cleanup fails
         }
 
@@ -90,18 +99,28 @@ async function ensureBrowserSession(): Promise<{
 
         // Create a completely new session with delay to allow system to clean up
         await new Promise((resolve) => setTimeout(resolve, 1000));
+        log("Creating fresh browser session after reset...", "info");
         defaultBrowserSession = await createNewBrowserSession(sessionId);
         return defaultBrowserSession;
       }
       throw error; // Re-throw if it's a different type of error
     }
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    log(
+      `Failed to initialize/reinitialize browser session: ${errorMsg}`,
+      "error"
+    );
+
     // If we still have a detached frame error after the first attempt, try a more aggressive approach
     if (
-      error instanceof Error &&
-      (error.message.includes("detached") ||
-      error.message.includes("Attempted to use detached Frame"))
+      errorMsg.includes("detached") ||
+      errorMsg.includes("Attempted to use detached Frame")
     ) {
+      log(
+        "Detached frame error persists, trying with a clean Browserbase connection...",
+        "info"
+      );
       try {
         // Force cleanup
         browsers.clear();
@@ -116,10 +135,31 @@ async function ensureBrowserSession(): Promise<{
         );
         return defaultBrowserSession;
       } catch (retryError) {
+        const retryErrorMsg =
+          retryError instanceof Error ? retryError.message : String(retryError);
+        log(`Failed second attempt: ${retryErrorMsg}`, "error");
         throw retryError;
       }
     }
     throw error;
+  }
+}
+
+// Helper function for logging
+function log(message: string, level: "info" | "error" | "debug" = "info") {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+  consoleLogs.push(logMessage);
+
+  // Console output
+  console[level === "error" ? "error" : "log"](logMessage);
+
+  // Send notification if server is initialized
+  if (server) {
+    server.notification({
+      method: "notifications/cloud/message",
+      params: { message: logMessage, type: level },
+    });
   }
 }
 
@@ -128,15 +168,27 @@ async function createNewBrowserSession(sessionId: string) {
   const bb = new Browserbase({
     apiKey: process.env.BROWSERBASE_API_KEY!,
   });
+
   const session = await bb.sessions.create({
     projectId: process.env.BROWSERBASE_PROJECT_ID!,
   });
+
   const browser = await puppeteer.connect({
     browserWSEndpoint: session.connectUrl,
   });
 
   const page = (await browser.pages())[0];
   browsers.set(sessionId, { browser, page });
+
+  // Set up console logging for this session
+  page.on("console", (msg) => {
+    const logEntry = `[Session ${sessionId}][${msg.type()}] ${msg.text()}`;
+    consoleLogs.push(logEntry);
+    server.notification({
+      method: "notifications/cloud/message",
+      params: { message: logEntry, type: "console_log" },
+    });
+  });
 
   return { browser, page };
 }
@@ -168,10 +220,25 @@ const TOOLS: Tool[] = [
   },
   {
     name: "browserbase_screenshot",
-    description: "Takes a screenshot of the current page. Use this tool to learn where you are on the page when controlling the browser with Stagehand. Only use this tool when the other tools are not sufficient to get the information you need.",
+    description:
+      "Takes a screenshot of the current page. Use this tool to learn where you are on the page when controlling the browser. Use this tool when the other tools are not sufficient enough to get the information you need.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        selector: {
+          type: "string",
+          description: "CSS selector for element to screenshot (optional)",
+        },
+        width: {
+          type: "number",
+          description: "Width in pixels (default: 1920)",
+        },
+        height: {
+          type: "number",
+          description: "Height in pixels (default: 1080)",
+        },
+      },
+      required: [],
     },
   },
   {
@@ -204,11 +271,28 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "browserbase_get_text",
-    description: "Extract all text content from the current page",
+    name: "browserbase_evaluate",
+    description: "Execute JavaScript in the browser console",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        script: { type: "string", description: "JavaScript code to execute" },
+      },
+      required: ["script"],
+    },
+  },
+  {
+    name: "browserbase_get_content",
+    description: "Extract all content from the current page",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: {
+          type: "string",
+          description:
+            "Optional CSS selector to get content from specific elements (default: returns whole page). Only use this tool when explicitly asked to extract content from a specific page.",
+        },
+      },
       required: [],
     },
   },
@@ -220,6 +304,7 @@ async function handleToolCall(
   args: any
 ): Promise<CallToolResult> {
   try {
+    // Declare session at function level
     let session: { browser: Browser; page: Page } | undefined;
 
     // For tools that don't need a session, skip session check
@@ -249,24 +334,13 @@ async function handleToolCall(
     switch (name) {
       case "browserbase_create_session":
         try {
-          // Check if session already exists
-          if (browsers.has(args.sessionId)) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: "Session already exists",
-                },
-              ],
-              isError: false,
-            };
-          }
-          await createNewBrowserSession(args.sessionId);
+          // Create or verify the default session
+          await ensureBrowserSession();
           return {
             content: [
               {
                 type: "text",
-                text: "Created new browser session",
+                text: "Browser session is ready",
               },
             ],
             isError: false,
@@ -295,54 +369,76 @@ async function handleToolCall(
           ],
           isError: false,
         };
+      case "browserbase_screenshot":
+        try {
+          const width = args.width ?? 1920;
+          const height = args.height ?? 1080;
+          await session!.page.setViewport({ width, height });
 
-      case "browserbase_screenshot": {
+          // Take screenshot
+          const screenshotBase64 = await (args.selector
+            ? (
+                await session!.page.$(args.selector)
+              )?.screenshot({ encoding: "base64" })
+            : session!.page.screenshot({
+                encoding: "base64",
+                fullPage: false,
+              }));
 
-        const screenshot = await session!.page.screenshot({
-          encoding: "base64",
-          fullPage: false,
+          if (!screenshotBase64) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: args.selector
+                    ? `Element not found: ${args.selector}`
+                    : "Screenshot failed",
+                },
+              ],
+              isError: true,
+            };
+          }
 
-        });
+          // Store screenshot
+          const name = `screenshot-${new Date()
+            .toISOString()
+            .replace(/:/g, "-")}`;
+          screenshots.set(name, screenshotBase64 as string);
 
-        if (!screenshot) {
+          // Notify client that resources list has changed
+          server.notification({
+            method: "notifications/resources/list_changed",
+          });
+
+          return {
+            content: [
+            // TODO: uncomment after better image handling is implemented in tester client
+              //{
+              //  type: "text",
+              //  text: `Screenshot taken with name: ${name}`,
+              //},
+              {
+                type: "image",
+                data: screenshotBase64,
+                mimeType: "image/png",
+              } as ImageContent,
+            ],
+            isError: false,
+          };
+        } catch (error) {
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
+          log(`Failed to take screenshot: ${errorMsg}`, "error");
           return {
             content: [
               {
                 type: "text",
-                text: "Screenshot failed",
+                text: `Failed to take screenshot: ${errorMsg}`,
               },
             ],
             isError: true,
           };
         }
-
-        screenshots.set(args.name, screenshot as string);
-        server.notification({
-          method: "notifications/resources/list_changed",
-        });
-
-        return {
-          content: [
-            {
-            type: "image",
-            data: screenshot,
-            mimeType: "image/png",
-            } as ImageContent,
-            // TODO: uncomment after better image handling is implemented in tester client
-            // {
-            //   type: "text",
-            //   text: `Screenshot taken`,
-            // } as TextContent,
-            // {
-            //   type: "image",
-            //   data: screenshot,
-            //   mimeType: "image/png",
-            // } as ImageContent,
-          ],
-          isError: false,
-        };
-      }
-
       case "browserbase_click":
         try {
           await session!.page.click(args.selector);
@@ -368,21 +464,18 @@ async function handleToolCall(
             isError: true,
           };
         }
-
       case "browserbase_fill":
         try {
           await session!.page.waitForSelector(args.selector);
           await session!.page.type(args.selector, args.value);
           return {
-
-              content: [
-                {
-                  type: "text",
-                  text: `Filled ${args.selector} with: ${args.value}`,
-                },
-              ],
-              isError: false,
-
+            content: [
+              {
+                type: "text",
+                text: `Filled ${args.selector} with: ${args.value}`,
+              },
+            ],
+            isError: false,
           };
         } catch (error) {
           return {
@@ -397,7 +490,50 @@ async function handleToolCall(
             isError: true,
           };
         }
-
+      case "browserbase_evaluate":
+        try {
+          const result = await session!.page.evaluate((script) => {
+            const logs: string[] = [];
+            const originalConsole = { ...console };
+            ["log", "info", "warn", "error"].forEach((method) => {
+              (console as any)[method] = (...args: any[]) => {
+                logs.push(`[${method}] ${args.join(" ")}`);
+                (originalConsole as any)[method](...args);
+              };
+            });
+            try {
+              const result = eval(script);
+              Object.assign(console, originalConsole);
+              return { result, logs };
+            } catch (error) {
+              Object.assign(console, originalConsole);
+              throw error;
+            }
+          }, args.script);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Execution result:\n${JSON.stringify(
+                  result.result,
+                  null,
+                  2
+                )}\n\nConsole output:\n${result.logs.join("\n")}`,
+              },
+            ],
+            isError: false,
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Script execution failed: ${(error as Error).message}`,
+              },
+            ],
+            isError: true,
+          };
+        }
       case "browserbase_get_json":
         try {
           const result = await session!.page.evaluate((selector) => {
@@ -406,7 +542,6 @@ async function handleToolCall(
               const jsonObjects = [];
               let braceCount = 0;
               let start = -1;
-
               for (let i = 0; i < text.length; i++) {
                 if (text[i] === "{") {
                   if (braceCount === 0) start = i;
@@ -431,13 +566,11 @@ async function handleToolCall(
             const elements = selector
               ? Array.from(document.querySelectorAll(selector))
               : [document.body];
-
             const results = {
               // Look for JSON in text content
               textContent: elements.flatMap((el) =>
                 extractJSON(el.textContent || "")
               ),
-
               // Look for JSON in script tags
               scriptTags: Array.from(
                 document.getElementsByTagName("script")
@@ -451,19 +584,17 @@ async function handleToolCall(
                   return [];
                 }
               }),
-
               // Look for JSON in meta tags
-              metaTags: Array.from(document.getElementsByTagName("meta")).flatMap(
-                (meta) => {
-                  try {
-                    const content = meta.getAttribute("content") || "";
-                    return extractJSON(content);
-                  } catch (e) {
-                    return [];
-                  }
+              metaTags: Array.from(
+                document.getElementsByTagName("meta")
+              ).flatMap((meta) => {
+                try {
+                  const content = meta.getAttribute("content") || "";
+                  return extractJSON(content);
+                } catch (e) {
+                  return [];
                 }
-              ),
-
+              }),
               // Look for JSON-LD
               jsonLd: Array.from(
                 document.querySelectorAll('script[type="application/ld+json"]')
@@ -475,10 +606,8 @@ async function handleToolCall(
                 }
               }),
             };
-
             return results;
           }, args.selector);
-
           return {
             content: [
               {
@@ -499,54 +628,43 @@ async function handleToolCall(
             isError: true,
           };
         }
-
-        case "browserbase_get_text": {
-          try {
-            const bodyText = await session!.page.evaluate(() => document.body.innerText);
-            const content = bodyText
-              .split('\n')
-              .map(line => line.trim())
-              .filter(line => {
-                if (!line) return false;
-
-                if (
-                    (line.includes('{') && line.includes('}')) ||
-                    line.includes('@keyframes') ||                         // Remove CSS animations
-                    line.match(/^\.[a-zA-Z0-9_-]+\s*{/) ||               // Remove CSS lines starting with .className {
-                    line.match(/^[a-zA-Z-]+:[a-zA-Z0-9%\s\(\)\.,-]+;$/)  // Remove lines like "color: blue;" or "margin: 10px;"
-                  ) {
-                  return false;
-                }
-                return true;
-              })
-              .map(line => {
-                return line.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-                  String.fromCharCode(parseInt(hex, 16))
-                );
-              });
-
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Extracted content:\n${content.join('\n')}`,
-                },
-              ],
-              isError: false,
-            };
-          } catch (error) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Failed to extract content: ${(error as Error).message}`,
-                },
-              ],
-              isError: true,
-            };
+      case "browserbase_get_content":
+        try {
+          let content;
+          if (args.selector) {
+            // If selector is provided, get content from specific elements
+            content = await session!.page.evaluate((selector) => {
+              const elements = document.querySelectorAll(selector);
+              return Array.from(elements).map((el) => el.textContent || "");
+            }, args.selector);
+          } else {
+            // If no selector is provided, get content from the whole page
+            content = await session!.page.evaluate(() => {
+              return Array.from(document.querySelectorAll("*")).map(
+                (el) => el.textContent || ""
+              );
+            });
           }
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Extracted content:\n${JSON.stringify(content, null, 2)}`,
+              },
+            ],
+            isError: false,
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Failed to extract content: ${(error as Error).message}`,
+              },
+            ],
+            isError: true,
+          };
         }
-
       default:
         return {
           content: [
@@ -560,9 +678,7 @@ async function handleToolCall(
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(
-      `Failed to handle tool call: ${errorMsg}`
-    );
+    log(`Failed to handle tool call: ${errorMsg}`, "error");
     return {
       content: [
         {
@@ -572,6 +688,27 @@ async function handleToolCall(
       ],
       isError: true,
     };
+  }
+}
+
+// Add this helper function
+function sanitizeJSON(data: any): any {
+  try {
+    // If it's already a string, validate it
+    if (typeof data === "string") {
+      return JSON.stringify(JSON.parse(data));
+    }
+    // Otherwise stringify the object
+    return JSON.stringify(data);
+  } catch (error) {
+    console.error("JSON sanitization error:", error);
+    // Return a safe error response
+    return JSON.stringify({
+      error: {
+        code: -32700,
+        message: "Parse error",
+      },
+    });
   }
 }
 
@@ -590,37 +727,86 @@ export const server = new Server(
 );
 
 // 7. Request Handlers
-server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-  resources: [
-    ...Array.from(screenshots.keys()).map((name) => ({
-      uri: `screenshot://${name}`,
-      mimeType: "image/png",
-      name: `Screenshot: ${name}`,
-    })),
-  ],
-}));
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  try {
+    const resources = {
+      resources: [
+        {
+          uri: "console://logs",
+          mimeType: "text/plain",
+          name: "Browser console logs",
+        },
+        ...Array.from(screenshots.keys()).map((name) => ({
+          uri: `screenshot://${name}`,
+          mimeType: "image/png",
+          name: `Screenshot: ${name}`,
+        })),
+      ],
+    };
+
+    // Sanitize before returning
+    return JSON.parse(sanitizeJSON(resources));
+  } catch (error) {
+    log(
+      `Error in ListResourcesRequestSchema: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "error"
+    );
+    return {
+      resources: [], // Always return valid structure
+    };
+  }
+});
 
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  const uri = request.params.uri.toString();
-
-
-  if (uri.startsWith("screenshot://")) {
-    const name = uri.split("://")[1];
-    const screenshot = screenshots.get(name);
-    if (screenshot) {
+  try {
+    const uri = request.params.uri.toString();
+    if (uri === "console://logs") {
       return {
         contents: [
           {
             uri,
-            mimeType: "image/png",
-            blob: screenshot,
+            mimeType: "text/plain",
+            text: consoleLogs.join("\n"),
           },
         ],
       };
     }
-  }
 
-  throw new Error(`Resource not found: ${uri}`);
+    if (uri.startsWith("screenshot://")) {
+      const name = uri.split("://")[1];
+      const screenshot = screenshots.get(name);
+      if (screenshot) {
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "image/png",
+              blob: screenshot,
+            },
+          ],
+        };
+      }
+    }
+
+    throw new Error(`Resource not found: ${uri}`);
+  } catch (error) {
+    log(
+      `Error in ReadResourceRequestSchema: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "error"
+    );
+    return {
+      error: {
+        code: -32603,
+        message: `Internal error: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      },
+    };
+  }
 });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -630,13 +816,3 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) =>
   handleToolCall(request.params.name, request.params.arguments ?? {})
 );
-
-console.log('browserbase all initialized');
-
-// // 8. Server Initialization
-// async function runServer() {
-//   const transport = new StdioServerTransport();
-//   await server.connect(transport);
-// }
-//
-// runServer().catch(console.error);

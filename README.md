@@ -28,9 +28,9 @@ All credits to the original authors of https://github.com/browserbase/mcp-server
 
 | Tool Name                 | Description                                                                 |
 | ------------------------- | --------------------------------------------------------------------------- |
-| browserbase_create_session | Create a new cloud browser session using Browserbase                       |
 | browserbase_navigate       | Navigate to a URL                                                          |
-| browserbase_screenshot     | Takes a screenshot of the current page. Use this tool to learn where you are on the page when controlling the browser with Stagehand. Only use this tool when the other tools are not sufficient to get the information you need. |
+| browserbase_screenshot     | Takes a screenshot of the current page. Use this tool to learn where you are on the page when controlling the browser. Use this tool when the other tools are not sufficient enough to get the information you need. |
 | browserbase_click          | Click an element on the page                                               |
 | browserbase_fill           | Fill out an input field                                                    |
-| browserbase_get_text       | Extract all text content from the current page                             |
+| browserbase_evaluate       | Execute JavaScript in the browser console                                  |
+| browserbase_get_content    | Extract all content from the current page                                  |
