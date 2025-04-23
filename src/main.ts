@@ -72,6 +72,22 @@ function getActorRunData() {
 
 async function startExpressServer(port: number, server: Server) {
     const app = express();
+
+    // Midleware to lock down access to the Actor
+    app.use((_req: Request, res: Response, next) => {
+        const allowedUserIDs = process.env.ALLOWED_USER_IDS?.split(',') ?? [];
+        if (allowedUserIDs.length > 0 && !allowedUserIDs.includes(process.env.APIFY_USER_ID as string)) {
+            const msg = `The Actor is in lockdown mode. You are not allowed to access this resource.`;
+            log.error(msg);
+            res.status(403).json({
+                error: msg,
+            });
+            return;
+        }
+
+        next();
+    });
+
     let transportSSE: SSEServerTransport;
     const sessions = new Map<string, SSEServerTransport>();
 
