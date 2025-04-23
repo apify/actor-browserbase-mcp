@@ -34,3 +34,8 @@ All credits to the original authors of https://github.com/browserbase/mcp-server
 | browserbase_fill           | Fill out an input field                                                    |
 | browserbase_evaluate       | Execute JavaScript in the browser console                                  |
 | browserbase_get_content    | Extract all content from the current page                                  |
+
+
+## 🌐 Open source
+
+This Actor is open source, hosted on [GitHub](https://github.com/apify/actor-browserbase-mcp).
