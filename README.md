@@ -41,3 +41,7 @@ All credits to the original authors of https://github.com/browserbase/mcp-server
 | ---------------------------------- | ------------------------------------------------------------- | ----------- |
 | Actor start per 1 GB               | Flat fee for starting an Actor run for each 1 GB of memory.   | $0.05       |
 | BrowserBase session runtime per minute | Flat fee for each started minute of BrowserBase session runtime. | $0.002      |
+
+## 🌐 Open source
+
+This Actor is open source, hosted on [GitHub](https://github.com/apify/actor-browserbase-mcp).
