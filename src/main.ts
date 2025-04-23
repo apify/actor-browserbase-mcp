@@ -61,8 +61,6 @@ if (STANDBY_MODE) {
 
 function setupExitWatchdog(server: Server) {
     const handleExit = async () => {
-        // log.info('Received exit signal, shutting down gracefully...');
-        // await chargeForSessions();
         setTimeout(() => process.exit(0), 15000);
         await server.close();
         process.exit(0);
