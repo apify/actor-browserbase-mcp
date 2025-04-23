@@ -6,7 +6,7 @@
     },
     "browserbase-session-minutes": {
         "eventTitle": "BrowserBase session runtime per minute",
-        "eventDescription": "Flat fee for each minute of BrowserBase session runtime.",
+        "eventDescription": "Flat fee for each started minute of BrowserBase session runtime.",
         "eventPriceUsd": 0.002
     }
 }

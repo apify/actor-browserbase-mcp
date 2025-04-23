@@ -10,7 +10,7 @@ import type { Request, Response } from 'express';
 import express from 'express';
 
 import log from '@apify/log';
-import { chargeForSessions, server } from './browserbase.js';
+import { chargeForSessionsUnchargedMinutes, server } from './browserbase.js';
 
 const HEADER_READINESS_PROBE = 'X-Readiness-Probe';
 
@@ -30,9 +30,9 @@ await Actor.charge({
 });
 log.info(`Charged ${memory_gbs} GB for actor start`);
 
-Actor.on('aborting', async () => {
-    log.info('Actor is aborting, charging for sessions...');
-    await chargeForSessions();
+Actor.on('persistState', async () => {
+    log.debug('Actor is persisting state, charging for sessions...');
+    await chargeForSessionsUnchargedMinutes();
 });
 
 const HOST = Actor.isAtHome() ? process.env.ACTOR_STANDBY_URL as string : 'http://localhost';
@@ -61,7 +61,8 @@ if (STANDBY_MODE) {
 
 function setupExitWatchdog(server: Server) {
     const handleExit = async () => {
-        await chargeForSessions();
+        // log.info('Received exit signal, shutting down gracefully...');
+        // await chargeForSessions();
         setTimeout(() => process.exit(0), 15000);
         await server.close();
         process.exit(0);
