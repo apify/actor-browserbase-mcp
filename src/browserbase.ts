@@ -10,6 +10,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { Browserbase } from "@browserbasehq/sdk";
+import { Actor, log as actorLog } from "apify";
 
 // Environment variables configuration
 const requiredEnvVars = {
@@ -29,6 +30,38 @@ const screenshots = new Map<string, string>();
 // Global state variable for the default browser session
 let defaultBrowserSession: { browser: Browser; page: Page } | null = null;
 const sessionId = "default"; // Using a consistent session ID for the default session
+
+const usedSessionIds = new Set<string>();
+const chargedSessionIds = new Set<string>();
+
+export async function chargeForSessions() {
+    const bb = new Browserbase({
+        apiKey: process.env.BROWSERBASE_API_KEY!,
+    });
+
+    const sessionIDsNotCharged = usedSessionIds.difference(chargedSessionIds);
+
+    for (const sessionId of sessionIDsNotCharged) {
+        try {
+            const session = await bb.sessions.retrieve(sessionId);
+            if (session.startedAt && session.endedAt) {
+                const startedAtDate = new Date(session.startedAt);
+                const endedAtDate = new Date(session.endedAt);
+                const durationMillis = endedAtDate.getTime() - startedAtDate.getTime();
+                const durationMinutes = Math.ceil(durationMillis / (1000 * 60));
+
+                actorLog.info(`Charging for session ${sessionId} for ${durationMinutes} minutes...`);
+                await Actor.charge({
+                    eventName: 'browserbase-session-minutes',
+                    count: durationMinutes,
+                });
+                chargedSessionIds.add(sessionId);
+            }
+        } catch (error) {
+            actorLog.error(`Failed to charge for session ${sessionId}: ${error}`);
+        }
+    }
+}
 
 // Ensure browser session is initialized and valid
 async function ensureBrowserSession(): Promise<{
@@ -169,9 +202,13 @@ async function createNewBrowserSession(sessionId: string) {
     apiKey: process.env.BROWSERBASE_API_KEY!,
   });
 
+  // Charge for previous sessions
+  await chargeForSessions();
+
   const session = await bb.sessions.create({
     projectId: process.env.BROWSERBASE_PROJECT_ID!,
   });
+  usedSessionIds.add(session.id);
 
   const browser = await puppeteer.connect({
     browserWSEndpoint: session.connectUrl,
