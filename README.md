@@ -1,4 +1,4 @@
-# 🅱️ Actor Browserbase MCP
+# 🅱️ Browserbase MCP Server
 
 This Actor is a wrapper for the [browserbase](https://github.com/browserbase/mcp-server-browserbase) MCP server.
 
